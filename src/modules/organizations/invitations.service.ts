@@ -14,7 +14,7 @@ import {
   type MemberInvitedEvent,
 } from '../../common/events/domain-events.js';
 import type { OrgContext } from '../../common/types/auth.js';
-import { appUrl } from '../../common/utils/app-url.js';
+import { appPaths, appUrl } from '../../common/utils/app-url.js';
 import { createToken, hashToken } from '../../common/utils/tokens.js';
 import { MailService } from '../../mail/mail.service.js';
 import { BillingService } from '../billing/billing.service.js';
@@ -98,7 +98,7 @@ export class InvitationsService {
       this.organizations.findById(orgId).exec(),
       this.usersService.findById(ctx.userId),
     ]);
-    const inviteUrl = appUrl(this.config, `/invite/${token}`);
+    const inviteUrl = appUrl(this.config, appPaths.invite(token));
     await this.mail.send(email, 'invitation', {
       url: inviteUrl,
       organizationName: org?.name,

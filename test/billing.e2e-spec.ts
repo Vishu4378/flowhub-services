@@ -54,7 +54,7 @@ describe('subscriptions', () => {
       expect.objectContaining({
         customerId: 'cus_test',
         organizationId: owner.orgId,
-        successUrl: `http://app.test/app/orgs/${owner.orgId}/billing?checkout=success`,
+        successUrl: `http://app.test/app/billing?org=${owner.orgId}&checkout=success`,
       }),
     );
 
@@ -157,7 +157,7 @@ describe('subscriptions', () => {
     const link = t.mail.outbox
       .filter((m) => m.to === admin.email)
       .pop()!
-      .html.match(/invite\/([^"]+)"/)![1];
+      .html.match(/invite\?token=([^"]+)"/)![1];
     await t
       .api()
       .post(`/api/invitations/${link}/accept`)

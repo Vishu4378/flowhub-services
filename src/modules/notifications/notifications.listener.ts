@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -13,6 +13,8 @@ import {
 import type { OrgRole } from '../../common/types/auth.js';
 import { Membership } from '../organizations/entities/membership.schema.js';
 import { Organization } from '../organizations/entities/organization.schema.js';
+import { ErrorReporter } from '../../common/errors/error-reporter.service.js';
+import { appPaths } from '../../common/utils/app-url.js';
 import { UsersService } from '../users/users.service.js';
 import { NotificationsService } from './notifications.service.js';
 
@@ -22,11 +24,10 @@ import { NotificationsService } from './notifications.service.js';
  */
 @Injectable()
 export class NotificationsListener {
-  private readonly logger = new Logger(NotificationsListener.name);
-
   constructor(
     private readonly notifications: NotificationsService,
     private readonly usersService: UsersService,
+    private readonly reporter: ErrorReporter,
     @InjectModel(Membership.name)
     private readonly memberships: Model<Membership>,
     @InjectModel(Organization.name)
@@ -38,7 +39,8 @@ export class NotificationsListener {
     await this.safely(async () => {
       const user = await this.usersService.findByEmail(event.email);
       if (!user) return; // They'll get the email; no account to notify yet.
-      const invitePath = new URL(event.inviteUrl).pathname;
+      const url = new URL(event.inviteUrl);
+      const invitePath = `${url.pathname}${url.search}`;
       await this.notifications.notify([user.id as string], {
         type: 'member.invited',
         title: `You're invited to ${event.organizationName}`,
@@ -63,7 +65,7 @@ export class NotificationsListener {
           orgId: event.organizationId,
           title: `${user.name} joined ${org}`,
           body: `${user.name} accepted the invitation and joined as ${event.role}.`,
-          link: `/app/orgs/${event.organizationId}/members`,
+          link: appPaths.org(event.organizationId, 'members'),
         },
       );
     });
@@ -79,7 +81,7 @@ export class NotificationsListener {
         orgId: event.organizationId,
         title: `Your role in ${org} changed`,
         body: `You are now ${event.role === 'admin' ? 'an' : 'a'} ${event.role}.`,
-        link: `/app/orgs/${event.organizationId}/members`,
+        link: appPaths.org(event.organizationId, 'members'),
       });
     });
   }
@@ -113,7 +115,7 @@ export class NotificationsListener {
           event.status === 'past_due'
             ? 'Your last payment failed. Update your card to keep your plan.'
             : `Subscription status: ${event.status.replace('_', ' ')}.`,
-        link: `/app/orgs/${event.organizationId}/billing`,
+        link: appPaths.org(event.organizationId, 'billing'),
       });
     });
   }
@@ -150,7 +152,7 @@ export class NotificationsListener {
         orgId: event.organizationId,
         title: `${org} is active again`,
         body: 'Access has been restored for everyone.',
-        link: `/app/orgs/${event.organizationId}/overview`,
+        link: appPaths.org(event.organizationId, 'overview'),
       });
     });
   }
@@ -169,7 +171,7 @@ export class NotificationsListener {
           orgId: event.organizationId,
           title: `Payment failed for ${org}`,
           body: 'We could not charge your card. Update your payment method to avoid losing your plan.',
-          link: `/app/orgs/${event.organizationId}/billing`,
+          link: appPaths.org(event.organizationId, 'billing'),
         },
         { email: true },
       );
@@ -192,7 +194,10 @@ export class NotificationsListener {
     try {
       await fn();
     } catch (error) {
-      this.logger.error('Failed to deliver notification', error);
+      await this.reporter.report(error, {
+        source: 'listener',
+        detail: 'notifications',
+      });
     }
   }
 }

@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { MongoExceptionFilter } from './common/filters/mongo-exception.filter.js';
+import { ErrorReporter } from './common/errors/error-reporter.service.js';
+import { AppExceptionFilter } from './common/filters/app-exception.filter.js';
 
 /** Global HTTP setup shared by main.ts and the e2e tests. */
 export function configureApp(app: INestApplication) {
@@ -15,7 +16,8 @@ export function configureApp(app: INestApplication) {
       transform: true,
     }),
   );
-  const { httpAdapter } = app.get(HttpAdapterHost);
-  app.useGlobalFilters(new MongoExceptionFilter(httpAdapter));
+  app.useGlobalFilters(
+    new AppExceptionFilter(app.get(HttpAdapterHost), app.get(ErrorReporter)),
+  );
   return app;
 }

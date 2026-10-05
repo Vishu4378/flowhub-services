@@ -6,6 +6,7 @@ import {
   ObserveInstrument,
 } from './app.module.js';
 import { configureApp } from './app.setup.js';
+import { ErrorReporter } from './common/errors/error-reporter.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -14,6 +15,21 @@ async function bootstrap() {
     rawBody: true,
   });
   configureApp(app);
+
+  // Errors outside any request (timers, stray promises) still reach the inbox.
+  const reporter = app.get(ErrorReporter);
+  process.on('unhandledRejection', (reason) => {
+    void reporter.report(reason, {
+      source: 'process',
+      detail: 'unhandledRejection',
+    });
+  });
+  process.on('uncaughtException', (error) => {
+    // The process is in an unknown state: report, then exit and let Docker restart it.
+    void reporter
+      .report(error, { source: 'process', detail: 'uncaughtException' })
+      .finally(() => process.exit(1));
+  });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FlowHub API')

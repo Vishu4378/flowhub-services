@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   DomainEvent,
@@ -10,6 +10,7 @@ import {
   type ProjectEvent,
   type SubscriptionChangedEvent,
 } from '../../common/events/domain-events.js';
+import { ErrorReporter } from '../../common/errors/error-reporter.service.js';
 import { UsersService } from '../users/users.service.js';
 import {
   AnalyticsService,
@@ -19,11 +20,10 @@ import {
 /** Writes every org-level domain event to the activity log. */
 @Injectable()
 export class AnalyticsListener {
-  private readonly logger = new Logger(AnalyticsListener.name);
-
   constructor(
     private readonly analytics: AnalyticsService,
     private readonly usersService: UsersService,
+    private readonly reporter: ErrorReporter,
   ) {}
 
   @OnEvent(DomainEvent.ProjectCreated, { async: true })
@@ -125,7 +125,11 @@ export class AnalyticsListener {
         ...extra,
       });
     } catch (error) {
-      this.logger.error(`Failed to record activity ${type}`, error);
+      await this.reporter.report(error, {
+        source: 'listener',
+        organizationId: event.organizationId,
+        detail: `analytics ${type}`,
+      });
     }
   }
 }

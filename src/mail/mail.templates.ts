@@ -48,6 +48,18 @@ ${button('Accept invitation')}`,
 <p>{{body}}</p>
 {{#if url}}${button('Open FlowHub')}{{/if}}`,
   },
+  errorAlert: {
+    subject: '[FlowHub {{environment}}] {{name}}: {{message}}',
+    body: `<h1 style="font-size:18px;margin:0 0 8px;color:#b91c1c">{{name}}: {{message}}</h1>
+<p style="font-size:13px;color:#64748b;margin:0 0 16px">{{time}} · {{environment}} · source: {{source}}{{#if repeats}} · {{repeats}} more since the last alert{{/if}}</p>
+<table style="font-size:13px;border-collapse:collapse;margin-bottom:16px">
+{{#if where}}<tr><td style="padding:2px 12px 2px 0;color:#64748b">Request</td><td><code>{{where}}</code></td></tr>{{/if}}
+{{#if userId}}<tr><td style="padding:2px 12px 2px 0;color:#64748b">User</td><td><code>{{userId}}</code></td></tr>{{/if}}
+{{#if organizationId}}<tr><td style="padding:2px 12px 2px 0;color:#64748b">Organization</td><td><code>{{organizationId}}</code></td></tr>{{/if}}
+{{#if detail}}<tr><td style="padding:2px 12px 2px 0;color:#64748b">Detail</td><td>{{detail}}</td></tr>{{/if}}
+</table>
+<pre style="font-size:12px;line-height:1.5;background:#f1f5f9;padding:12px;border-radius:6px;white-space:pre-wrap;word-break:break-all">{{stack}}</pre>`,
+  },
 } satisfies Record<string, { subject: string; body: string }>;
 
 export type MailTemplate = keyof typeof TEMPLATES;

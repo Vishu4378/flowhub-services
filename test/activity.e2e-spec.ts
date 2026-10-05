@@ -110,8 +110,14 @@ describe('notifications', () => {
     await t.app
       .get(NotificationsService)
       .notify([owner.userId], { type: 'test', title: 'Private' });
-    const [mine] = (await t.api().get('/api/notifications').set(owner.auth))
-      .body;
+    const list = await t
+      .api()
+      .get('/api/notifications')
+      .set(owner.auth)
+      .expect(200);
+    // Explicit, so a rare flake here reports what was actually returned.
+    expect(list.body).toEqual([expect.objectContaining({ title: 'Private' })]);
+    const [mine] = list.body;
     await t
       .api()
       .post(`/api/notifications/${mine.id}/read`)

@@ -13,7 +13,7 @@ import {
   DomainEvent,
   type SubscriptionChangedEvent,
 } from '../../common/events/domain-events.js';
-import { appUrl } from '../../common/utils/app-url.js';
+import { appPaths, appUrl } from '../../common/utils/app-url.js';
 import { Organization } from '../organizations/entities/organization.schema.js';
 import {
   PaymentEvent,
@@ -137,13 +137,18 @@ export class BillingService {
       );
     }
     const customerId = await this.ensureCustomer(orgId, userId);
-    const base = `/app/orgs/${orgId}/billing`;
     const url = await this.stripe.createCheckoutSession({
       customerId,
       priceId,
       organizationId: orgId,
-      successUrl: appUrl(this.config, `${base}?checkout=success`),
-      cancelUrl: appUrl(this.config, `${base}?checkout=canceled`),
+      successUrl: appUrl(
+        this.config,
+        appPaths.org(orgId, 'billing', { checkout: 'success' }),
+      ),
+      cancelUrl: appUrl(
+        this.config,
+        appPaths.org(orgId, 'billing', { checkout: 'canceled' }),
+      ),
     });
     return { url };
   }
@@ -158,7 +163,7 @@ export class BillingService {
     }
     const url = await this.stripe.createPortalSession(
       sub.customerId,
-      appUrl(this.config, `/app/orgs/${orgId}/billing`),
+      appUrl(this.config, appPaths.org(orgId, 'billing')),
     );
     return { url };
   }

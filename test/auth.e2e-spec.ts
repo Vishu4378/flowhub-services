@@ -163,13 +163,16 @@ describe('password reset and change', () => {
   });
 
   it('does not reveal whether an email is registered', async () => {
-    const before = t.mail.outbox.length;
-    await t
+    const res = await t
       .api()
       .post('/api/auth/forgot-password')
       .send({ email: 'nobody@nowhere.test' })
       .expect(204);
-    expect(t.mail.outbox.length).toBe(before);
+    // Same empty 204 as for a real account, and nothing is sent.
+    expect(res.body).toEqual({});
+    expect(t.mail.outbox.some((m) => m.to === 'nobody@nowhere.test')).toBe(
+      false,
+    );
   });
 
   it('changes the password when the current one is right', async () => {

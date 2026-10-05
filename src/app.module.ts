@@ -6,6 +6,7 @@ import { createObserveModule } from '@nestjs/observe';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { ErrorsModule } from './common/errors/errors.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
@@ -50,6 +51,7 @@ function observeImports() {
     }),
     DatabaseModule,
     MailModule,
+    ErrorsModule,
     TenancyModule,
     AuthModule,
     UsersModule,

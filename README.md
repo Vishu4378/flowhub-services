@@ -26,6 +26,7 @@ Everything except Mongo and `JWT_SECRET` is optional in development:
 | `STRIPE_WEBHOOK_SECRET` | The Stripe webhook returns 503 |
 | `OBSERVE_APP_KEY` | Observe telemetry is off |
 | `SUPER_ADMIN_EMAILS` | Nobody can open the platform admin (`/app/admin`) |
+| `ALERT_EMAILS` | Unexpected errors are only logged, not emailed |
 
 `APP_URL` is the web app's public URL, used to build links in emails and Stripe
 redirects. `CORS_ORIGIN` only matters if browsers call the API directly; the
@@ -49,6 +50,22 @@ The e2e suite never touches a real database or Stripe: it starts
 `mongodb-memory-server`, stubs Stripe's network calls, and sends webhooks
 signed exactly like Stripe does. Emailed links are read from
 `MailService.outbox`.
+
+### Error alerts
+
+Any crash (an error that isn't a deliberate HttpException, or an explicit 500),
+a failure in an event listener, an unhandled
+promise rejection, or a browser crash (reported by the web app to
+`POST /api/client-errors`) is emailed to `ALERT_EMAILS`. The same error is
+sent at most once per 10 minutes (the next email says how many repeats were
+skipped) and at most 20 alerts go out per hour. Deliberate answers (4xx,
+501 "not implemented", 503 "billing not configured") are never sent;
+request bodies, headers and query strings are never included.
+
+### CI
+
+`.github/workflows/ci.yml` runs lint, build, unit and e2e tests, then a
+Docker build, on every push to `main` and every pull request.
 
 ## Architecture
 
@@ -133,7 +150,7 @@ FlowHub Build Plan are the backend-engineering core:
 | 6 · Kafka | `EventEmitter2` emits in services → Kafka producer; listeners → consumers |
 | 7 · Webhook event-ID idempotency | `PaymentsController.stripeWebhook` |
 | 8 · Prometheus / Grafana | new `/metrics` endpoint |
-| 9 · CI/CD, EC2, Nginx | repo root |
+| 9 · Deploy (CD), Lightsail, Nginx | add a deploy job to `.github/workflows/ci.yml` (CI already runs) |
 
 ### Adding a feature module
 

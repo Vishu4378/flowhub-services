@@ -26,7 +26,7 @@ describe('invitations', () => {
       .send({ email: invitee, role: 'admin' })
       .expect(201);
     const link = lastLinkTo(t, invitee);
-    expect(link).toMatch(/^http:\/\/app\.test\/invite\//);
+    expect(link).toMatch(/^http:\/\/app\.test\/invite\?token=/);
     const token = tokenFrom(link);
 
     const preview = await t.api().get(`/api/invitations/${token}`).expect(200);

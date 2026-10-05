@@ -26,7 +26,7 @@ export class Notification {
   @Prop({ default: '' })
   body: string;
 
-  /** App path to open when clicked, e.g. /app/orgs/:id/members. */
+  /** App path to open when clicked, e.g. /app/members?org=:id. */
   @Prop({ type: String, default: null })
   link: string | null;
 

@@ -16,7 +16,7 @@ import {
 } from '../../common/events/domain-events.js';
 import { superAdminEmails } from '../../common/guards/super-admin.guard.js';
 import type { JwtPayload } from '../../common/types/auth.js';
-import { appUrl } from '../../common/utils/app-url.js';
+import { appPaths, appUrl } from '../../common/utils/app-url.js';
 import { hashPassword, verifyPassword } from '../../common/utils/password.js';
 import { MailService } from '../../mail/mail.service.js';
 import { InvitationsService } from '../organizations/invitations.service.js';
@@ -193,7 +193,7 @@ export class AuthService {
     const token = await this.tokens.issue(user.id as string, 'reset_password');
     await this.mail.send(user.email, 'resetPassword', {
       name: user.name,
-      url: appUrl(this.config, `/reset-password?token=${token}`),
+      url: appUrl(this.config, appPaths.resetPassword(token)),
     });
   }
 
@@ -229,7 +229,7 @@ export class AuthService {
     const token = await this.tokens.issue(user.id as string, 'verify_email');
     await this.mail.send(user.email, 'verifyEmail', {
       name: user.name,
-      url: appUrl(this.config, `/verify-email?token=${token}`),
+      url: appUrl(this.config, appPaths.verifyEmail(token)),
     });
   }
 
