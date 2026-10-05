@@ -8,5 +8,8 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e-spec.ts'],
     testTimeout: 30_000,
+    // Each file boots its own app + mongod; running them one at a time keeps
+    // slow machines from starving a server mid-suite.
+    fileParallelism: false,
   },
 });

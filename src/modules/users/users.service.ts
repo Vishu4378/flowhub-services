@@ -34,6 +34,23 @@ export class UsersService {
     return this.users.find({ _id: { $in: ids } }).exec();
   }
 
+  async markEmailVerified(id: string): Promise<void> {
+    await this.users
+      .updateOne(
+        { _id: id, emailVerifiedAt: null },
+        { emailVerifiedAt: new Date() },
+      )
+      .exec();
+  }
+
+  async setPassword(id: string, passwordHash: string): Promise<void> {
+    await this.users.updateOne({ _id: id }, { passwordHash }).exec();
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.users.deleteOne({ _id: id }).exec();
+  }
+
   async update(id: string, dto: UpdateUserDto): Promise<UserDocument> {
     const user = await this.users
       .findByIdAndUpdate(id, dto, {

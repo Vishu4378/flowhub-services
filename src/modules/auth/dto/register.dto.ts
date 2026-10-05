@@ -1,4 +1,4 @@
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Length } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -12,7 +12,14 @@ export class RegisterDto {
   @Length(8, 128)
   password: string;
 
+  /** Required unless signing up through an invitation, which supplies the org. */
+  @IsOptional()
   @IsString()
   @Length(2, 80)
-  organizationName: string;
+  organizationName?: string;
+
+  /** Invitation token from an invite link; the user joins that org on signup. */
+  @IsOptional()
+  @IsString()
+  inviteToken?: string;
 }

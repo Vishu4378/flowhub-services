@@ -8,6 +8,13 @@ export class Organization {
 
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   slug: string;
+
+  /** Set by a super admin; while set, every org-scoped route returns 403. */
+  @Prop({ type: Date, default: null })
+  suspendedAt: Date | null;
+
+  @Prop({ type: String, default: null })
+  suspendedReason: string | null;
 }
 
 export type OrganizationDocument = HydratedDocument<Organization>;

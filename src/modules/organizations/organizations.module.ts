@@ -1,25 +1,24 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { BillingModule } from '../billing/billing.module.js';
 import { UsersModule } from '../users/users.module.js';
-import { Membership, MembershipSchema } from './entities/membership.schema.js';
-import {
-  Organization,
-  OrganizationSchema,
-} from './entities/organization.schema.js';
-import { OrgMemberGuard } from './org-member.guard.js';
+import { Invitation, InvitationSchema } from './entities/invitation.schema.js';
+import { InvitationsController } from './invitations.controller.js';
+import { InvitationsService } from './invitations.service.js';
 import { OrganizationsController } from './organizations.controller.js';
 import { OrganizationsService } from './organizations.service.js';
 
+/** Organization and member management. Models and the guard come from TenancyModule. */
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: Organization.name, schema: OrganizationSchema },
-      { name: Membership.name, schema: MembershipSchema },
+      { name: Invitation.name, schema: InvitationSchema },
     ]),
     UsersModule,
+    BillingModule,
   ],
-  controllers: [OrganizationsController],
-  providers: [OrganizationsService, OrgMemberGuard],
-  exports: [OrganizationsService, OrgMemberGuard],
+  controllers: [OrganizationsController, InvitationsController],
+  providers: [OrganizationsService, InvitationsService],
+  exports: [OrganizationsService, InvitationsService],
 })
 export class OrganizationsModule {}

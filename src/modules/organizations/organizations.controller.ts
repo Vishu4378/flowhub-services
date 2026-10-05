@@ -15,7 +15,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
 import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe.js';
 import type { AuthUser, OrgContext } from '../../common/types/auth.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
 import { CreateOrganizationDto } from './dto/create-organization.dto.js';
 import { UpdateMemberDto } from './dto/update-member.dto.js';
 import { UpdateOrganizationDto } from './dto/update-organization.dto.js';
@@ -76,17 +75,6 @@ export class OrganizationsController {
     return this.organizationsService.listMembers(orgId);
   }
 
-  @Post(':orgId/members')
-  @UseGuards(OrgMemberGuard)
-  @Roles('owner', 'admin')
-  addMember(
-    @Param('orgId') orgId: string,
-    @Body() dto: AddMemberDto,
-    @CurrentOrg() org: OrgContext,
-  ) {
-    return this.organizationsService.addMember(orgId, dto, org);
-  }
-
   @Patch(':orgId/members/:userId')
   @UseGuards(OrgMemberGuard)
   @Roles('owner', 'admin')
@@ -95,13 +83,12 @@ export class OrganizationsController {
     @Param('userId', ParseObjectIdPipe) userId: string,
     @Body() dto: UpdateMemberDto,
     @CurrentOrg() org: OrgContext,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.organizationsService.updateMemberRole(
-      orgId,
-      userId,
-      dto.role,
-      org,
-    );
+    return this.organizationsService.updateMemberRole(orgId, userId, dto.role, {
+      ...org,
+      userId: user.userId,
+    });
   }
 
   /** Admins remove others; any member may remove themselves (leave). */

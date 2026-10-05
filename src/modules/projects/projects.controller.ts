@@ -56,8 +56,24 @@ export class ProjectsController {
     @CurrentOrg() org: OrgContext,
     @Param('id', ParseObjectIdPipe) id: string,
     @Body() dto: UpdateProjectDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.projectsService.update(org.organizationId, id, dto);
+    return this.projectsService.update(
+      org.organizationId,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
+  /** Returns the new key once. Implementation is Phase 3 Day 14 (see service). */
+  @Post(':id/api-key')
+  @Roles('owner', 'admin')
+  rotateApiKey(
+    @CurrentOrg() org: OrgContext,
+    @Param('id', ParseObjectIdPipe) id: string,
+  ) {
+    return this.projectsService.rotateApiKey(org.organizationId, id);
   }
 
   @Delete(':id')
@@ -66,7 +82,8 @@ export class ProjectsController {
   remove(
     @CurrentOrg() org: OrgContext,
     @Param('id', ParseObjectIdPipe) id: string,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.projectsService.remove(org.organizationId, id);
+    return this.projectsService.remove(org.organizationId, id, user.userId);
   }
 }

@@ -11,6 +11,9 @@ export class User {
 
   @Prop({ required: true, select: false })
   passwordHash: string;
+
+  @Prop({ type: Date, default: null })
+  emailVerifiedAt: Date | null;
 }
 
 export type UserDocument = HydratedDocument<User>;

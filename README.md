@@ -1,175 +1,148 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# FlowHub API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Multi-tenant backend for FlowHub: accounts, organizations with roles,
+invitations, projects, plans and Stripe billing, notifications and an activity
+log. The web app lives in the sibling repo
+[flowhub.com](https://github.com/Vishu4378/flowhub.com).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+NestJS 12 · MongoDB (Mongoose 9) · Stripe · AWS SES · Vitest
 
-## Description
+## Getting started
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Requires Node 22+ and pnpm.
 
-## Project structure
+```bash
+cp .env.example .env          # then fill in MONGODB_URI and JWT_SECRET
+pnpm install
+pnpm start:dev                # http://localhost:3000, Swagger at /docs
+```
 
-Feature modules live under `src/modules/<feature>`, shared building blocks under
-`src/common`. Every feature module owns its controller, service, DTOs and
-entities, and exports its service so other modules can inject it.
+Everything except Mongo and `JWT_SECRET` is optional in development:
+
+| Variable | Without it |
+|---|---|
+| `MAIL_FROM` (+ AWS credentials) | Emails are logged to the console, links included |
+| `STRIPE_SECRET_KEY`, `STRIPE_PRICE_*` | Paid plans show as unavailable; billing endpoints return 503 |
+| `STRIPE_WEBHOOK_SECRET` | The Stripe webhook returns 503 |
+| `OBSERVE_APP_KEY` | Observe telemetry is off |
+| `SUPER_ADMIN_EMAILS` | Nobody can open the platform admin (`/app/admin`) |
+
+`APP_URL` is the web app's public URL, used to build links in emails and Stripe
+redirects. `CORS_ORIGIN` only matters if browsers call the API directly; the
+web app proxies `/api` through its own origin.
+
+### Docker
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32) docker compose up --build
+```
+
+## Tests
+
+```bash
+pnpm test        # unit tests
+pnpm test:e2e    # boots the whole app against an in-memory MongoDB
+pnpm lint
+```
+
+The e2e suite never touches a real database or Stripe: it starts
+`mongodb-memory-server`, stubs Stripe's network calls, and sends webhooks
+signed exactly like Stripe does. Emailed links are read from
+`MailService.outbox`.
+
+## Architecture
+
+All routes are under `/api` except `/health`. Every route needs a bearer token
+unless marked `@Public()`.
 
 ```
 src/
-├── app.module.ts             # root module, imports every feature module
-├── main.ts
-├── common/                   # cross-cutting code, no feature logic
-│   ├── constants/
-│   ├── decorators/
-│   ├── dto/
-│   ├── filters/
-│   ├── guards/
-│   ├── interceptors/
-│   ├── middleware/
-│   ├── pipes/
-│   ├── types/
-│   └── utils/
+├── main.ts / app.setup.ts     # bootstrap; validation, CORS, /api prefix, error mapping
+├── app.module.ts              # wires everything; rate limiting; optional Observe
+├── common/
+│   ├── events/                # domain event names and payloads
+│   ├── decorators/            # @Public, @Roles, @CurrentUser, @CurrentOrg
+│   ├── guards/                # JwtAuthGuard (global)
+│   ├── filters/               # Mongo duplicate key → 409
+│   ├── pipes/                 # ParseObjectIdPipe
+│   └── utils/                 # password hashing, tokens, slugs, app URLs
+├── database/
+│   ├── tenant-scope.plugin.ts # refuses tenant queries that don't filter by organizationId
+│   └── to-json.plugin.ts      # id instead of _id; strips select:false fields
+├── mail/                      # MailService (SES or console) + templates
 └── modules/
-    ├── auth/                 # authentication, sessions, tokens
-    ├── users/                # user accounts and profiles
-    ├── projects/             # projects and their membership
-    ├── organizations/        # tenants, teams, roles
-    ├── billing/              # plans, subscriptions, invoices
-    ├── payments/             # payment providers and transactions
-    ├── notifications/        # email, push, in-app delivery
-    └── analytics/            # events, metrics, reporting
+    ├── auth/                  # register, login, email verification, password reset
+    ├── users/                 # profile
+    ├── organizations/         # orgs, members, roles, invitations; TenancyModule + OrgMemberGuard
+    ├── projects/              # tenant-scoped CRUD with plan limits
+    ├── billing/               # plan catalog, subscriptions, limits, checkout and portal
+    ├── payments/              # Stripe client, webhook, payment ledger
+    ├── notifications/         # in-app (+ email) notifications from domain events
+    ├── analytics/             # activity log from domain events, overview stats
+    ├── admin/                 # super admin: all orgs/users, suspend, delete, global audit log
+    └── health/
 ```
 
-Each feature folder follows the same shape:
+Key ideas:
 
-```
-modules/<feature>/
-├── <feature>.module.ts
-├── <feature>.controller.ts
-├── <feature>.controller.spec.ts
-├── <feature>.service.ts
-├── <feature>.service.spec.ts
-├── dto/
-└── entities/
-```
+- **Tenancy.** Tenant data carries `organizationId` and uses `tenantScopePlugin`, so a
+  query that forgets the tenant filter throws instead of leaking data. Org routes
+  look like `/organizations/:orgId/...` and use `OrgMemberGuard`, which 404s for
+  non-members and checks `@Roles()`.
+- **Events, not imports.** Feature services emit domain events
+  (`project.created`, `member.joined`…). Notifications and analytics listen, so
+  features never depend on them.
+- **Billing.** Plans and limits live in `billing/plans.ts`. Stripe is the source of
+  truth: checkout and portal are Stripe-hosted, and subscription state arrives via
+  `POST /api/payments/webhooks/stripe`. Payments reports normalized
+  `payments.subscription_synced` events, so another provider (Razorpay) can plug in
+  without touching billing.
 
-Add another feature module with the Nest CLI, which also registers it in
-`src/app.module.ts`:
+### Stripe setup
+
+1. Create two recurring prices (Pro, Business) and put their ids in
+   `STRIPE_PRICE_PRO` / `STRIPE_PRICE_BUSINESS`. Keep `priceMonthly` in
+   `billing/plans.ts` in sync with them; it's what the pricing page shows.
+2. Add a webhook endpoint for `https://<api>/api/payments/webhooks/stripe` with
+   `customer.subscription.created|updated|deleted`, `invoice.paid` and
+   `invoice.payment_failed`, then set `STRIPE_WEBHOOK_SECRET`.
+3. Enable the customer portal in the Stripe dashboard (plan switching, cancel).
+
+Locally: `stripe listen --forward-to localhost:3000/api/payments/webhooks/stripe`.
+
+### Super admin
+
+Platform owners are listed in `SUPER_ADMIN_EMAILS` (comma-separated). It lives
+in config, not the database, so no API call can grant it. `/api/admin/*` reads
+across every tenant with `skipTenantScope`; suspending an organization makes
+`OrgMemberGuard` answer 403 `ORG_SUSPENDED` for all of its routes.
+
+## Build plan: what's next
+
+CRUD, dashboards and the admin panel are done. The remaining phases of the
+FlowHub Build Plan are the backend-engineering core:
+
+| Phase | Where to start |
+|---|---|
+| 3 · Project API keys | `ProjectsService.rotateApiKey` (stub returns 501), schema fields in `project.schema.ts`, UI card already wired |
+| 2 · `x-org-api-key` resolution | a new guard next to `common/guards/jwt-auth.guard.ts` |
+| 2 · Refresh tokens + logout | `AuthService.session()` / `JwtAuthGuard` |
+| 4 · Redis (cache, rate limit, blacklist) | replaces the in-memory `ThrottlerModule` storage in `app.module.ts` |
+| 4.5 · Monthly API-call quotas | alongside `BillingService.assertWithinLimit` |
+| 5 · SQS email queue + DLQ | `MailService.send` becomes a producer |
+| 6 · Kafka | `EventEmitter2` emits in services → Kafka producer; listeners → consumers |
+| 7 · Webhook event-ID idempotency | `PaymentsController.stripeWebhook` |
+| 8 · Prometheus / Grafana | new `/metrics` endpoint |
+| 9 · CI/CD, EC2, Nginx | repo root |
+
+### Adding a feature module
 
 ```bash
-$ pnpm exec nest g module modules/<feature>
-$ pnpm exec nest g controller modules/<feature>
-$ pnpm exec nest g service modules/<feature>
+pnpm exec nest g module modules/<feature>
+pnpm exec nest g controller modules/<feature>
+pnpm exec nest g service modules/<feature>
 ```
 
-The modules are intentionally empty — no routes, no persistence, no providers
-beyond the generated service.
-
-## Project setup
-
-```bash
-$ pnpm install
-```
-
-## Compile and run the project
-
-```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Give tenant-owned schemas an `organizationId` and `schema.plugin(tenantScopePlugin)`,
+guard org routes with `@UseGuards(OrgMemberGuard)`, and emit a domain event for
+anything that should appear in the activity log.

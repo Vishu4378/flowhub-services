@@ -4,11 +4,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'node:crypto';
 import { Model, Types, type Connection } from 'mongoose';
+import {
+  DomainEvent,
+  type MemberEvent,
+  type OrgEvent,
+} from '../../common/events/domain-events.js';
 import type { OrgContext, OrgRole } from '../../common/types/auth.js';
 import { slugify } from '../../common/utils/slugify.js';
+import { BillingService } from '../billing/billing.service.js';
 import { UsersService } from '../users/users.service.js';
 import {
   Membership,
@@ -18,8 +25,8 @@ import {
   Organization,
   OrganizationDocument,
 } from './entities/organization.schema.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
 import { UpdateOrganizationDto } from './dto/update-organization.dto.js';
+import { assertCanAssign } from './roles.js';
 
 /** Serializes an organization together with the caller's role in it. */
 export function withRole(org: OrganizationDocument, role: OrgRole) {
@@ -35,6 +42,8 @@ export class OrganizationsService {
     private readonly memberships: Model<Membership>,
     @InjectConnection() private readonly connection: Connection,
     private readonly usersService: UsersService,
+    private readonly billingService: BillingService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /** Creates an organization and makes `userId` its owner. */
@@ -49,6 +58,10 @@ export class OrganizationsService {
       userId: new Types.ObjectId(userId),
       role: 'owner',
     });
+    this.events.emit(DomainEvent.OrganizationCreated, {
+      organizationId: org.id as string,
+      actorId: userId,
+    } satisfies OrgEvent);
     return org;
   }
 
@@ -87,6 +100,12 @@ export class OrganizationsService {
 
   /** Owner only: removes the organization, its memberships and tenant data. */
   async remove(orgId: string): Promise<void> {
+    const plan = await this.billingService.currentPlan(orgId);
+    if (plan.id !== 'free') {
+      throw new BadRequestException(
+        'Cancel the subscription under Billing before deleting this organization',
+      );
+    }
     const organizationId = new Types.ObjectId(orgId);
     for (const model of Object.values(this.connection.models)) {
       if (
@@ -98,6 +117,64 @@ export class OrganizationsService {
     }
     await this.memberships.deleteMany({ organizationId }).exec();
     await this.organizations.deleteOne({ _id: organizationId }).exec();
+  }
+
+  /**
+   * What deleting this user's account would do: organizations where they are
+   * the only member get deleted; any where they are the only owner but others
+   * remain block the deletion (ownership must be handed over first).
+   */
+  async accountDeletionPlan(userId: string) {
+    const memberships = await this.memberships
+      .find({ userId: new Types.ObjectId(userId) })
+      .exec();
+    const deleteOrgs: string[] = [];
+    const blockers: string[] = [];
+    for (const m of memberships) {
+      if (m.role !== 'owner') continue;
+      const organizationId = m.organizationId;
+      const [members, owners, org] = await Promise.all([
+        this.memberships.countDocuments({ organizationId }).exec(),
+        this.memberships
+          .countDocuments({ organizationId, role: 'owner' })
+          .exec(),
+        this.organizations.findById(organizationId, { name: 1 }).exec(),
+      ]);
+      const name = org?.name ?? 'an organization';
+      if (members === 1) {
+        const plan = await this.billingService.currentPlan(
+          organizationId.toString(),
+        );
+        if (plan.id !== 'free') {
+          blockers.push(
+            `Cancel the ${plan.name} subscription of ${name} first`,
+          );
+        } else {
+          deleteOrgs.push(organizationId.toString());
+        }
+      } else if (owners === 1) {
+        blockers.push(`Make someone else an owner of ${name} first`);
+      }
+    }
+    return { deleteOrgs, blockers };
+  }
+
+  /** Removes every membership of a user (used when an account is deleted). */
+  async removeAllMemberships(userId: string): Promise<void> {
+    const memberships = await this.memberships
+      .find({ userId: new Types.ObjectId(userId) })
+      .exec();
+    await this.memberships
+      .deleteMany({ userId: new Types.ObjectId(userId) })
+      .exec();
+    for (const m of memberships) {
+      this.events.emit(DomainEvent.MemberRemoved, {
+        organizationId: m.organizationId.toString(),
+        actorId: userId,
+        userId,
+        role: m.role,
+      } satisfies MemberEvent);
+    }
   }
 
   findMembership(
@@ -137,35 +214,13 @@ export class OrganizationsService {
     });
   }
 
-  /** Adds an existing user by email. Invitations for new users come later. */
-  async addMember(orgId: string, dto: AddMemberDto, ctx: OrgContext) {
-    this.assertCanAssign(ctx.role, dto.role);
-    const user = await this.usersService.findByEmail(dto.email);
-    if (!user) {
-      throw new NotFoundException(
-        'No FlowHub account uses that email. Ask them to sign up first.',
-      );
-    }
-    await this.memberships.create({
-      organizationId: new Types.ObjectId(orgId),
-      userId: user._id,
-      role: dto.role,
-    });
-    return {
-      userId: user.id as string,
-      name: user.name,
-      email: user.email,
-      role: dto.role,
-    };
-  }
-
   async updateMemberRole(
     orgId: string,
     userId: string,
     role: OrgRole,
-    ctx: OrgContext,
+    ctx: OrgContext & { userId: string },
   ) {
-    this.assertCanAssign(ctx.role, role);
+    assertCanAssign(ctx.role, role);
     const membership = await this.requireMembership(orgId, userId);
     if (membership.role === 'owner' && role !== 'owner') {
       await this.assertNotLastOwner(orgId);
@@ -173,8 +228,17 @@ export class OrganizationsService {
     if (membership.role === 'owner' && ctx.role !== 'owner') {
       throw new ForbiddenException('Only owners can change an owner');
     }
+    const previous = membership.role;
     membership.role = role;
     await membership.save();
+    if (previous !== role) {
+      this.events.emit(DomainEvent.MemberRoleChanged, {
+        organizationId: orgId,
+        actorId: ctx.userId,
+        userId,
+        role,
+      } satisfies MemberEvent);
+    }
     return { userId, role };
   }
 
@@ -195,18 +259,18 @@ export class OrganizationsService {
       await this.assertNotLastOwner(orgId);
     }
     await membership.deleteOne();
+    this.events.emit(DomainEvent.MemberRemoved, {
+      organizationId: orgId,
+      actorId: ctx.userId,
+      userId,
+      role: membership.role,
+    } satisfies MemberEvent);
   }
 
   private async requireMembership(orgId: string, userId: string) {
     const membership = await this.findMembership(orgId, userId);
     if (!membership) throw new NotFoundException('Member not found');
     return membership;
-  }
-
-  private assertCanAssign(actor: OrgRole, target: OrgRole) {
-    if (target === 'owner' && actor !== 'owner') {
-      throw new ForbiddenException('Only owners can grant the owner role');
-    }
   }
 
   private async assertNotLastOwner(orgId: string) {

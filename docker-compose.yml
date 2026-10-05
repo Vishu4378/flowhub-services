@@ -7,7 +7,14 @@ services:
       PORT: 3000
       MONGODB_URI: mongodb://mongo:27017/flowhub
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      MAIL_FROM: ${MAIL_FROM:-}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+      STRIPE_PRICE_BUSINESS: ${STRIPE_PRICE_BUSINESS:-}
     depends_on:
       mongo:
         condition: service_healthy
