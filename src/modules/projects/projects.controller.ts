@@ -1,4 +1,72 @@
-import { Controller } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentOrg } from '../../common/decorators/current-org.decorator.js';
+import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
+import { ParseObjectIdPipe } from '../../common/pipes/parse-object-id.pipe.js';
+import type { AuthUser, OrgContext } from '../../common/types/auth.js';
+import { OrgMemberGuard } from '../organizations/org-member.guard.js';
+import { CreateProjectDto } from './dto/create-project.dto.js';
+import { ListProjectsQuery } from './dto/list-projects.query.js';
+import { UpdateProjectDto } from './dto/update-project.dto.js';
+import { ProjectsService } from './projects.service.js';
 
-@Controller('projects')
-export class ProjectsController {}
+@ApiTags('projects')
+@ApiBearerAuth()
+@UseGuards(OrgMemberGuard)
+@Controller('organizations/:orgId/projects')
+export class ProjectsController {
+  constructor(private readonly projectsService: ProjectsService) {}
+
+  @Get()
+  list(@CurrentOrg() org: OrgContext, @Query() query: ListProjectsQuery) {
+    return this.projectsService.list(org.organizationId, query);
+  }
+
+  @Post()
+  create(
+    @CurrentOrg() org: OrgContext,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateProjectDto,
+  ) {
+    return this.projectsService.create(org.organizationId, user.userId, dto);
+  }
+
+  @Get(':id')
+  get(
+    @CurrentOrg() org: OrgContext,
+    @Param('id', ParseObjectIdPipe) id: string,
+  ) {
+    return this.projectsService.get(org.organizationId, id);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentOrg() org: OrgContext,
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Body() dto: UpdateProjectDto,
+  ) {
+    return this.projectsService.update(org.organizationId, id, dto);
+  }
+
+  @Delete(':id')
+  @Roles('owner', 'admin')
+  @HttpCode(204)
+  remove(
+    @CurrentOrg() org: OrgContext,
+    @Param('id', ParseObjectIdPipe) id: string,
+  ) {
+    return this.projectsService.remove(org.organizationId, id);
+  }
+}

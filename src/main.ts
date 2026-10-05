@@ -1,11 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule, ObserveInstrument } from './app.module.js';
+import { configureApp } from './app.setup.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     instrument: ObserveInstrument,
   });
+  configureApp(app);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('FlowHub API')
